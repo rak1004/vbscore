@@ -79,7 +79,7 @@
         <div class="bg-gradient-to-r from-amber-600 via-yellow-400 to-amber-600 text-slate-950 font-black text-center py-2.5 px-4 rounded-xl shadow-xl border-2 border-yellow-300/60 tracking-wider flex items-center justify-center gap-3">
             <i class="fa-solid fa-trophy text-slate-900 text-lg md:text-2xl animate-bounce"></i>
             <h1 id="tournamentTitleBanner" class="text-lg sm:text-2xl md:text-3xl font-black uppercase tracking-tight text-slate-950 drop-shadow-sm truncate">
-                2026 시민 화합 배구 대회
+                가내초 배구선수단을 환영합니다.
             </h1>
             <i class="fa-solid fa-trophy text-slate-900 text-lg md:text-2xl animate-bounce"></i>
         </div>
@@ -103,7 +103,7 @@
             <div class="flex items-center gap-6 bg-slate-900/80 px-6 py-2.5 rounded-xl border border-slate-800">
                 <div class="text-center">
                     <div class="text-[10px] md:text-xs text-slate-400 font-bold uppercase tracking-wider">CURRENT SET</div>
-                    <div id="currentSetText" class="digital-font text-2xl md:text-3xl font-extrabold text-amber-400 glow-yellow">SET 1</div>
+                    <div id="currentSetText" class="digital-font text-3xl sm:text-4xl md:text-5xl font-black text-amber-400 glow-yellow">SET 1</div>
                 </div>
                 <div class="h-8 w-px bg-slate-700"></div>
                 <div class="text-center">
@@ -142,17 +142,17 @@
                             <i class="fa-solid fa-volleyball"></i>
                             <span id="leftServeText">SERVE</span>
                         </button>
-                        <span id="leftTeamLabel" class="text-xs font-extrabold tracking-wider text-cyan-400 bg-cyan-950/60 px-2.5 py-1 rounded-md border border-cyan-800/50">HOME</span>
+                        <span id="leftTeamLabel" class="text-xs sm:text-sm font-extrabold tracking-wider text-cyan-400 bg-cyan-950/60 px-2.5 py-1 rounded-md border border-cyan-800/50">HOME</span>
                     </div>
                     <div class="text-right">
                         <span class="text-xs text-slate-400 uppercase tracking-widest font-bold">SET SCORE</span>
-                        <div id="leftSetScore" class="digital-font text-2xl md:text-3xl font-black text-cyan-400 glow-blue">0</div>
+                        <div id="leftSetScore" class="digital-font text-4xl sm:text-5xl md:text-6xl font-black text-cyan-400 glow-blue">0</div>
                     </div>
                 </div>
 
                 <!-- 팀 이름 -->
                 <div class="mb-4">
-                    <h2 id="leftTeamName" class="text-2xl md:text-4xl font-black tracking-tight text-slate-100 truncate">A 팀</h2>
+                    <h2 id="leftTeamName" class="text-2xl md:text-4xl font-black tracking-tight text-slate-100 truncate">소사벌초등학교</h2>
                 </div>
 
                 <!-- 메인 점수 및 점수 조절 버튼 -->
@@ -192,17 +192,17 @@
                             <i class="fa-solid fa-volleyball"></i>
                             <span id="rightServeText">SERVE</span>
                         </button>
-                        <span id="rightTeamLabel" class="text-xs font-extrabold tracking-wider text-rose-400 bg-rose-950/60 px-2.5 py-1 rounded-md border border-rose-800/50">AWAY</span>
+                        <span id="rightTeamLabel" class="text-xs sm:text-sm font-extrabold tracking-wider text-rose-400 bg-rose-950/60 px-2.5 py-1 rounded-md border border-rose-800/50">AWAY</span>
                     </div>
                     <div class="text-right">
                         <span class="text-xs text-slate-400 uppercase tracking-widest font-bold">SET SCORE</span>
-                        <div id="rightSetScore" class="digital-font text-2xl md:text-3xl font-black text-rose-400 glow-red">0</div>
+                        <div id="rightSetScore" class="digital-font text-4xl sm:text-5xl md:text-6xl font-black text-rose-400 glow-red">0</div>
                     </div>
                 </div>
 
                 <!-- 팀 이름 -->
                 <div class="mb-4">
-                    <h2 id="rightTeamName" class="text-2xl md:text-4xl font-black tracking-tight text-slate-100 truncate">B 팀</h2>
+                    <h2 id="rightTeamName" class="text-2xl md:text-4xl font-black tracking-tight text-slate-100 truncate">가내초등학교</h2>
                 </div>
 
                 <!-- 메인 점수 및 점수 조절 버튼 -->
@@ -434,19 +434,21 @@
 
         // 경기 상태 객체
         let gameState = {
-            tournamentTitle: '2026 시민 화합 배구 대회',
+            tournamentTitle: '가내초 배구선수단을 환영합니다.',
             targetScoreRegular: 25,
             targetScoreFinal: 15,
             leftTeam: {
                 id: 'A',
-                name: 'A 팀',
+                name: '소사벌초등학교',
+                label: 'HOME',
                 score: 0,
                 setScore: 0,
                 setHistory: []
             },
             rightTeam: {
                 id: 'B',
-                name: 'B 팀',
+                name: '가내초등학교',
+                label: 'AWAY',
                 score: 0,
                 setScore: 0,
                 setHistory: []
@@ -811,6 +813,25 @@
         function renderScoreboard() {
             document.getElementById('tournamentTitleBanner').textContent = gameState.tournamentTitle || '배구 경기 전광판';
 
+            // HOME / AWAY 라벨 동적 업데이트 (코트 체인지 시 함께 이동)
+            const leftLabel = document.getElementById('leftTeamLabel');
+            const leftLblText = gameState.leftTeam.label || 'HOME';
+            leftLabel.textContent = leftLblText;
+            if (leftLblText === 'AWAY') {
+                leftLabel.className = 'text-xs sm:text-sm font-extrabold tracking-wider text-rose-400 bg-rose-950/60 px-2.5 py-1 rounded-md border border-rose-800/50';
+            } else {
+                leftLabel.className = 'text-xs sm:text-sm font-extrabold tracking-wider text-cyan-400 bg-cyan-950/60 px-2.5 py-1 rounded-md border border-cyan-800/50';
+            }
+
+            const rightLabel = document.getElementById('rightTeamLabel');
+            const rightLblText = gameState.rightTeam.label || 'AWAY';
+            rightLabel.textContent = rightLblText;
+            if (rightLblText === 'HOME') {
+                rightLabel.className = 'text-xs sm:text-sm font-extrabold tracking-wider text-cyan-400 bg-cyan-950/60 px-2.5 py-1 rounded-md border border-cyan-800/50';
+            } else {
+                rightLabel.className = 'text-xs sm:text-sm font-extrabold tracking-wider text-rose-400 bg-rose-950/60 px-2.5 py-1 rounded-md border border-rose-800/50';
+            }
+
             document.getElementById('leftTeamName').textContent = gameState.leftTeam.name;
             document.getElementById('leftScore').textContent = String(gameState.leftTeam.score).padStart(2, '0');
             document.getElementById('leftSetScore').textContent = gameState.leftTeam.setScore;
@@ -890,9 +911,9 @@
         function saveSettings(e) {
             e.preventDefault();
             
-            const newTitle = document.getElementById('inputTournamentTitle').value.trim() || '배구 경기 대회';
-            const newNameA = document.getElementById('inputTeamA').value.trim() || 'A 팀';
-            const newNameB = document.getElementById('inputTeamB').value.trim() || 'B 팀';
+            const newTitle = document.getElementById('inputTournamentTitle').value.trim() || '가내초 배구선수단을 환영합니다.';
+            const newNameA = document.getElementById('inputTeamA').value.trim() || '소사벌초등학교';
+            const newNameB = document.getElementById('inputTeamB').value.trim() || '가내초등학교';
             const selectedMode = parseInt(document.querySelector('input[name="matchMode"]:checked').value);
             const scoreRegular = parseInt(document.getElementById('inputScoreRegular').value) || 25;
             const scoreFinal = parseInt(document.getElementById('inputScoreFinal').value) || 15;
@@ -904,11 +925,13 @@
             gameState.targetScoreFinal = scoreFinal;
 
             gameState.leftTeam.name = newNameA;
+            gameState.leftTeam.label = 'HOME';
             gameState.leftTeam.score = 0;
             gameState.leftTeam.setScore = 0;
             gameState.leftTeam.setHistory = [];
 
             gameState.rightTeam.name = newNameB;
+            gameState.rightTeam.label = 'AWAY';
             gameState.rightTeam.score = 0;
             gameState.rightTeam.setScore = 0;
             gameState.rightTeam.setHistory = [];
@@ -921,7 +944,7 @@
             renderScoreboard();
             closeSettingsModal();
             saveStateToStorage();
-            showToastMessage('설정이 성공적으로 저장되었습니다!');
+            showToastMessage('설정이 성공적으로 저장되었으며 보존됩니다!');
             playBeep(900, 'sine', 0.2);
         }
 
