@@ -12,6 +12,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,700;0,900;1,700;1,900&family=Orbitron:wght@600;800;900&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+    <!-- MQTT.js CDN for Universal Standalone Realtime Sync -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     
     <style>
         body {
@@ -117,6 +119,10 @@
                     <span id="syncPulse" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
                     <i class="fa-solid fa-cloud-arrow-up"></i>
                     <span id="syncStatusText">실시간 화면 동기화 중 (방: MAIN)</span>
+                    <button onclick="copyShareLink()" class="ml-1 bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/40 text-[11px] transition-all flex items-center gap-1" title="동일한 방 동기화 링크 복사">
+                        <i class="fa-solid fa-link"></i>
+                        <span>공유</span>
+                    </button>
                 </div>
 
                 <!-- 단축키 팁 -->
@@ -423,9 +429,24 @@
         let db = null;
         let auth = null;
         let userId = null;
-        let currentRoomId = 'MAIN';
+        
+        // URL 쿼리스트링(?room=...) 또는 해시(#...)에서 방 코드 자동 추출
+        function getRoomCodeFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomParam = urlParams.get('room');
+            if (roomParam) return roomParam.trim().toUpperCase();
+            if (window.location.hash) {
+                const hashRoom = window.location.hash.replace('#', '').trim().toUpperCase();
+                if (hashRoom) return hashRoom;
+            }
+            return 'MAIN';
+        }
+
+        let currentRoomId = getRoomCodeFromUrl();
         let unsubscribeSync = null;
         let isRemoteUpdating = false;
+        let mqttClient = null;
+        let lastBroadcastTime = 0;
 
         // 경기 상태 객체
         let gameState = {
@@ -452,7 +473,8 @@
             maxSets: 3, // 1: 단일 세트, 3: 3전 2선승, 5: 5전 3선승
             servingSide: 'left',
             isMatchOver: false,
-            winner: null
+            winner: null,
+            updatedAt: new Date().toISOString()
         };
 
         let actionHistory = [];
@@ -492,6 +514,21 @@
             }, 3000);
         }
 
+        // 동기화 공유 링크 복사 기능
+        function copyShareLink() {
+            const shareUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(currentRoomId)}`;
+            
+            // execCommand fallback
+            const tempInput = document.createElement('input');
+            tempInput.value = shareUrl;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+
+            showToastMessage(`방 [${currentRoomId}] 동기화 링크가 복사되었습니다! 다른 기기 주소창에 붙여넣으세요.`);
+        }
+
         // 히스토리 기록
         function pushHistory() {
             actionHistory.push(JSON.stringify(gameState));
@@ -506,6 +543,7 @@
             }
             const previousState = actionHistory.pop();
             gameState = JSON.parse(previousState);
+            gameState.updatedAt = new Date().toISOString();
             renderScoreboard();
             saveStateToStorage();
             showToastMessage('이전 점수 상태로 되돌렸습니다.');
@@ -517,6 +555,7 @@
             pushHistory();
             gameState.leftTeam.score = 0;
             gameState.rightTeam.score = 0;
+            gameState.updatedAt = new Date().toISOString();
             renderScoreboard();
             saveStateToStorage();
             showToastMessage('현재 세트 점수가 0:0으로 초기화되었습니다.');
@@ -565,6 +604,8 @@
                 gameState.servingSide = side;
             }
 
+            gameState.updatedAt = new Date().toISOString();
+
             playBeep(delta > 0 ? 880 : 440, 'triangle', 0.1);
             renderScoreboard();
             saveStateToStorage();
@@ -574,6 +615,7 @@
         function toggleServe(side) {
             pushHistory();
             gameState.servingSide = side;
+            gameState.updatedAt = new Date().toISOString();
             playBeep(750, 'sine', 0.1);
             renderScoreboard();
             saveStateToStorage();
@@ -590,7 +632,6 @@
 
             const leftScore = gameState.leftTeam.score;
             const rightScore = gameState.rightTeam.score;
-            const targetScore = getTargetScoreForCurrentSet();
             const winningSets = getWinningSetCount();
 
             const isZeroZero = (leftScore === 0 && rightScore === 0);
@@ -645,6 +686,7 @@
                 }
             }
 
+            gameState.updatedAt = new Date().toISOString();
             playBeep(950, 'square', 0.2);
             renderScoreboard();
             saveStateToStorage();
@@ -727,7 +769,6 @@
             renderTeamCard('right', gameState.rightTeam, gameState.servingSide === 'right');
         }
 
-        // 설정 모달 열기/닫기/저장
         function openSettingsModal() {
             document.getElementById('inputTournamentTitle').value = gameState.tournamentTitle;
             document.getElementById('inputTeamA').value = gameState.leftTeam.name;
@@ -772,6 +813,12 @@
             const isRoomChanged = (newRoomCode !== currentRoomId);
             currentRoomId = newRoomCode;
 
+            // URL 쿼리 파라미터 업데이트 (새로고침 없이 URL 유지)
+            if (window.history.pushState) {
+                const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${currentRoomId}`;
+                window.history.pushState({ path: newUrl }, '', newUrl);
+            }
+
             gameState.tournamentTitle = newTitle;
             gameState.targetScoreRegular = scoreRegular;
             gameState.targetScoreFinal = scoreFinal;
@@ -792,12 +839,14 @@
             gameState.maxSets = selectedMode;
             gameState.isMatchOver = false;
             gameState.winner = null;
+            gameState.updatedAt = new Date().toISOString();
 
             renderScoreboard();
             closeSettingsModal();
 
             if (isRoomChanged) {
                 subscribeToPublicRoom(currentRoomId);
+                connectMqttSync(currentRoomId);
             } else {
                 saveStateToStorage();
             }
@@ -806,7 +855,6 @@
             playBeep(900, 'sine', 0.2);
         }
 
-        // 승리 세레머니 및 폭죽 연출
         let fireworksAnimationId = null;
 
         function triggerVictoryCeremony(winnerName, loserName) {
@@ -915,6 +963,64 @@
             }
         }
 
+        // 범용 WebSocket/MQTT 브로커 동기화 (GitHub Pages 및 외부 사이트 100% 호환)
+        function connectMqttSync(roomId) {
+            try {
+                if (mqttClient) {
+                    mqttClient.end(true);
+                }
+
+                const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
+                const topic = `volleyball_v2/scoreboard/room_${roomId.toUpperCase()}`;
+
+                mqttClient = mqtt.connect(brokerUrl, {
+                    keepalive: 30,
+                    clientId: 'vb_' + Math.random().toString(16).substring(2, 10),
+                    clean: true
+                });
+
+                mqttClient.on('connect', () => {
+                    mqttClient.subscribe(topic, { qos: 1 });
+                    updateSyncStatusUI(true, roomId);
+                    
+                    // 새로 접속한 경우 내 최신 데이터 브로드캐스트 요청/전송
+                    if (Date.now() - lastBroadcastTime > 2000) {
+                        saveStateToStorage();
+                    }
+                });
+
+                mqttClient.on('message', (t, message) => {
+                    try {
+                        const payload = JSON.parse(message.toString());
+                        if (payload && payload.gameState && payload.senderId !== userId) {
+                            const incomingState = payload.gameState;
+                            
+                            // 원격 데이터가 더 최신이거나 유효한 경우 업데이트
+                            if (!gameState.updatedAt || !incomingState.updatedAt || new Date(incomingState.updatedAt) >= new Date(gameState.updatedAt)) {
+                                isRemoteUpdating = true;
+                                gameState = incomingState;
+                                renderScoreboard();
+                                isRemoteUpdating = false;
+                                updateSyncStatusUI(true, roomId);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('MQTT message parse error:', e);
+                    }
+                });
+
+                mqttClient.on('error', (err) => {
+                    console.warn('MQTT connection warning:', err);
+                });
+
+                mqttClient.on('offline', () => {
+                    if (!db) updateSyncStatusUI(false, roomId);
+                });
+            } catch (err) {
+                console.warn('MQTT init error:', err);
+            }
+        }
+
         // Firebase 초기화 및 실시간 공유 구독
         try {
             if (typeof __firebase_config !== 'undefined') {
@@ -929,18 +1035,21 @@
                     } else {
                         await signInAnonymously(auth);
                     }
-                    userId = auth.currentUser?.uid || 'default-user';
+                    userId = auth.currentUser?.uid || 'user_' + Math.random().toString(36).substr(2, 9);
                     subscribeToPublicRoom(currentRoomId);
                 };
                 initAuth().catch(e => {
                     console.error('Auth initialization error:', e);
-                    updateSyncStatusUI(false);
                 });
+            } else {
+                userId = 'user_' + Math.random().toString(36).substr(2, 9);
             }
         } catch (err) {
             console.error('Firebase config error:', err);
-            updateSyncStatusUI(false);
         }
+
+        // 항상 MQTT 실시간 동기화 브로커 실행 (외부 배포 사이트에서도 작동 보장)
+        connectMqttSync(currentRoomId);
 
         function subscribeToPublicRoom(roomId) {
             if (!db || !auth.currentUser) return;
@@ -954,20 +1063,19 @@
             unsubscribeSync = onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    if (data && data.gameState) {
-                        isRemoteUpdating = true;
-                        gameState = data.gameState;
-                        renderScoreboard();
-                        isRemoteUpdating = false;
-                        updateSyncStatusUI(true, roomId);
+                    if (data && data.gameState && data.lastUpdatedBy !== userId) {
+                        const incomingState = data.gameState;
+                        if (!gameState.updatedAt || !incomingState.updatedAt || new Date(incomingState.updatedAt) >= new Date(gameState.updatedAt)) {
+                            isRemoteUpdating = true;
+                            gameState = incomingState;
+                            renderScoreboard();
+                            isRemoteUpdating = false;
+                            updateSyncStatusUI(true, roomId);
+                        }
                     }
-                } else {
-                    saveStateToStorage();
-                    updateSyncStatusUI(true, roomId);
                 }
             }, (error) => {
                 console.error('Realtime sync error:', error);
-                updateSyncStatusUI(false, roomId);
             });
         }
 
@@ -986,16 +1094,35 @@
         }
 
         async function saveStateToStorage() {
-            if (!db || !auth || !auth.currentUser || isRemoteUpdating) return;
-            try {
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'scoreboard_rooms', currentRoomId.toUpperCase());
-                await setDoc(docRef, {
-                    gameState,
-                    updatedAt: new Date().toISOString(),
-                    lastUpdatedBy: userId
-                });
-            } catch (err) {
-                console.error('Failed to save to Firestore:', err);
+            if (isRemoteUpdating) return;
+            lastBroadcastTime = Date.now();
+
+            // 1. 범용 MQTT 브로커 전송 (GitHub Pages 및 외부 접속자용)
+            if (mqttClient && mqttClient.connected) {
+                try {
+                    const topic = `volleyball_v2/scoreboard/room_${currentRoomId.toUpperCase()}`;
+                    mqttClient.publish(topic, JSON.stringify({
+                        gameState,
+                        senderId: userId,
+                        timestamp: Date.now()
+                    }), { qos: 1, retain: true });
+                } catch (e) {
+                    console.error('MQTT publish error:', e);
+                }
+            }
+
+            // 2. Firebase Firestore 저장 (플랫폼 환경용)
+            if (db && auth && auth.currentUser) {
+                try {
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'scoreboard_rooms', currentRoomId.toUpperCase());
+                    await setDoc(docRef, {
+                        gameState,
+                        updatedAt: new Date().toISOString(),
+                        lastUpdatedBy: userId
+                    });
+                } catch (err) {
+                    console.error('Failed to save to Firestore:', err);
+                }
             }
         }
 
@@ -1034,6 +1161,7 @@
         window.closeVictoryModal = closeVictoryModal;
         window.renderScoreboard = renderScoreboard;
         window.showToastMessage = showToastMessage;
+        window.copyShareLink = copyShareLink;
 
         window.onload = function() {
             renderScoreboard();
